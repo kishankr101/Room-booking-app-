@@ -1,110 +1,148 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-import folium
-from streamlit_folium import st_folium
 
-# --- PAGE CONFIG ---
-st.set_page_config(page_title="StayEase | Modern Room Booking", layout="wide")
+# --- 1. PAGE CONFIG & PREMIUM UI ---
+st.set_page_config(page_title="StayEase India | Premium Stay", layout="wide", initial_sidebar_state="expanded")
 
-# --- DESIGN SYSTEM / CSS ---
+# Custom CSS for a SaaS-like Modern Look
 st.markdown("""
     <style>
-    .main { background-color: #F8FAFC; }
-    .stButton>button { width: 100%; border-radius: 8px; height: 3em; background-color: #6366F1; color: white; }
-    .property-card { border: 1px solid #E2E8F0; padding: 15px; border-radius: 12px; background: white; margin-bottom: 20px; }
-    .price-tag { color: #6366F1; font-weight: bold; font-size: 20px; }
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&display=swap');
+    
+    html, body, [class*="css"] { font-family: 'Plus Jakarta Sans', sans-serif; }
+    
+    .main { background: #fdfdfd; }
+    .stButton>button { 
+        border-radius: 10px; height: 3.5em; font-weight: 700; 
+        background: linear-gradient(90deg, #6366F1 0%, #4F46E5 100%); color: white; border: none;
+    }
+    .city-card {
+        border-radius: 20px; overflow: hidden; position: relative;
+        margin-bottom: 20px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
+    }
+    .property-card {
+        background: white; padding: 20px; border-radius: 15px;
+        border: 1px solid #f1f1f1; margin-bottom: 15px;
+        transition: transform 0.2s;
+    }
+    .property-card:hover { transform: translateY(-5px); border-color: #6366F1; }
+    .rating-badge { background: #FEF3C7; color: #92400E; padding: 2px 8px; border-radius: 5px; font-size: 0.8em; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- MOCK DATA ---
-if 'bookings' not in st.session_state:
-    st.session_state.bookings = []
+# --- 2. SESSION STATE INITIALIZATION ---
+if 'auth_stage' not in st.session_state:
+    st.session_state.auth_stage = 'register'  # Stages: register, login, main_app
+if 'user_data' not in st.session_state:
+    st.session_state.user_data = {}
 
-properties = [
-    {"id": 1, "name": "Global Student Residency", "type": "Student", "price": 5000, "lat": 28.6139, "lon": 77.2090, "status": "Available"},
-    {"id": 2, "name": "Skyline Luxury Suites", "type": "Traveler", "price": 2500, "lat": 28.6200, "lon": 77.2100, "status": "Available"},
-    {"id": 3, "name": "Family Comfort Stay", "type": "Family", "price": 3500, "lat": 28.6100, "lon": 77.2150, "status": "Full"},
-]
+# --- 3. AUTHENTICATION FLOW ---
 
-# --- SIDEBAR (Role Selection) ---
-st.sidebar.title("🏨 StayEase")
-role = st.sidebar.selectbox("Access Mode", ["User / Traveler", "Property Owner"])
-
-# --- SAFETY ALERT SYSTEM (8 PM Logic) ---
-current_hour = datetime.now().hour
-if 20 <= current_hour <= 23 or 0 <= current_hour <= 4:
-    with st.sidebar.expander("🚨 SAFETY CHECK-IN", expanded=True):
-        st.warning("It's late night. Please confirm your status.")
-        if st.button("I am Safe"):
-            st.success("Status Updated: Safe")
-        if st.button("EMERGENCY HELP", type="primary"):
-            st.error("Contacting Local Authorities & Owner...")
-
-# --- MAIN UI LOGIC ---
-
-if role == "User / Traveler":
-    st.title("Find your perfect stay")
-    
-    # 1. Search Bar
-    col1, col2, col3 = st.columns([2, 1, 1])
+# REGISTRATION SCREEN
+if st.session_state.auth_stage == 'register':
+    col1, col2 = st.columns([1, 1])
     with col1:
-        search = st.text_input("Search Locality", placeholder="e.g. Connaught Place, Delhi")
-    with col2:
-        category = st.selectbox("Category", ["All", "Student", "Family", "Traveler"])
-    with col3:
-        price_range = st.slider("Max Budget (₹)", 1000, 10000, 5000)
+        st.title("Create Account 🚀")
+        st.subheader("Join India's most trusted stay network")
+        name = st.text_input("Full Name")
+        phone = st.text_input("Phone Number")
+        email = st.text_input("Email ID")
+        user_type = st.selectbox("I am a...", ["Student", "Traveler", "Family"])
+        
+        if st.button("Sign Up"):
+            if name and phone and email:
+                st.session_state.user_data = {"name": name, "type": user_type}
+                st.session_state.auth_stage = 'login'
+                st.rerun()
+            else:
+                st.error("Please fill all details")
 
-    # 2. Tabs for List and Map View
-    tab1, tab2 = st.tabs(["📋 Property List", "🗺️ Map View"])
+# LOGIN SCREEN
+elif st.session_state.auth_stage == 'login':
+    st.title("Welcome Back 👋")
+    login_email = st.text_input("Enter Registered Email")
+    if st.button("Login to Dashboard"):
+        if login_email:
+            st.session_state.auth_stage = 'main_app'
+            st.rerun()
 
-    with tab1:
-        for p in properties:
-            if (category == "All" or p["type"] == category) and p["price"] <= price_range:
-                with st.container():
-                    st.markdown(f"""
-                    <div class="property-card">
-                        <h3>{p['name']}</h3>
-                        <p>Type: <b>{p['type']}</b> | Status: <span style="color: {'green' if p['status']=='Available' else 'red'}">{p['status']}</span></p>
-                        <p class="price-tag">₹{p['price']} / night</p>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    if p['status'] == "Available":
-                        if st.button(f"Book {p['name']}", key=p['id']):
-                            st.session_state.bookings.append(p['name'])
-                            st.success(f"Booking requested for {p['name']}!")
-
-    with tab2:
-        m = folium.Map(location=[28.6139, 77.2090], zoom_start=13)
-        for p in properties:
-            color = "blue" if p["type"] == "Student" else "orange"
-            folium.Marker(
-                [p["lat"], p["lon"]], 
-                popup=f"{p['name']} - ₹{p['price']}",
-                icon=folium.Icon(color=color)
-            ).add_to(m)
-        st_folium(m, width=1100, height=500)
-
-elif role == "Property Owner":
-    st.title("Provider Dashboard")
+# MAIN APPLICATION
+elif st.session_state.auth_stage == 'main_app':
     
-    col_a, col_b, col_c = st.columns(3)
-    col_a.metric("Total Bookings", len(st.session_state.bookings))
-    col_b.metric("Active Listings", "5")
-    col_c.metric("Revenue", "₹45,000")
+    # --- SIDEBAR & SAFETY ---
+    st.sidebar.title(f"Hi, {st.session_state.user_data['name']}")
+    st.sidebar.info(f"Role: {st.session_state.user_data['type']}")
+    
+    current_hour = datetime.now().hour
+    if 20 <= current_hour or current_hour <= 4:
+        st.sidebar.warning("🌙 Night Safety Active")
+        st.sidebar.button("I'm Home Safe")
+    
+    # --- TOP NAVIGATION & SEARCH ---
+    st.title("Discover Your Next Stay")
+    
+    states = ["Delhi", "Maharashtra", "Karnataka", "Tamil Nadu", "Uttar Pradesh", "Rajasthan"]
+    
+    c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
+    with c1:
+        loc_search = st.text_input("🔍 Search India-wide", placeholder="Try 'Indiranagar, Bangalore'")
+    with c2:
+        state_sel = st.selectbox("State", states)
+    with c3:
+        price_limit = st.select_slider("Budget", options=[1000, 2000, 5000, 10000, 20000])
+    with c4:
+        # Category is pre-locked based on registration but can be changed here
+        cat_filter = st.selectbox("Category", ["Student", "Traveler", "Family"], 
+                                 index=["Student", "Traveler", "Family"].index(st.session_state.user_data['type']))
 
-    st.subheader("Manage Rooms")
-    new_prop = st.expander("➕ Add New Property")
-    with new_prop:
-        st.text_input("Property Name")
-        st.number_input("Price per Night", min_value=100)
-        st.selectbox("Type", ["Student", "Family", "Traveler"])
-        st.button("List Property")
+    # --- CITY HIGHLIGHTS (UI/UX Improvement) ---
+    st.write("### Popular in India")
+    city_cols = st.columns(3)
+    cities = [
+        {"name": "Bangalore", "img": "https://images.unsplash.com/photo-1596176530529-78163a4f7af2?w=400", "desc": "IT Hub & Student PGs"},
+        {"name": "Mumbai", "img": "https://images.unsplash.com/photo-1566550970634-08db530302ba?w=400", "desc": "Business & Luxury Stays"},
+        {"name": "Jaipur", "img": "https://images.unsplash.com/photo-1477587458883-47145ed94245?w=400", "desc": "History & Family Tourism"}
+    ]
+    
+    for i, city in enumerate(cities):
+        with city_cols[i]:
+            st.markdown(f"""
+                <div class="city-card">
+                    <img src="{city['img']}" style="width:100%; height:150px; object-fit:cover;">
+                    <div style="padding:10px;"><b>{city['name']}</b><br><small>{city['desc']}</small></div>
+                </div>
+            """, unsafe_allow_html=True)
 
-    st.subheader("Recent Inquiries")
-    if st.session_state.bookings:
-        for b in st.session_state.bookings:
-            st.write(f"🔔 New booking request for: **{b}**")
-    else:
-        st.info("No new inquiries yet.")
+    # --- PROPERTY LISTINGS ---
+    st.write("---")
+    st.subheader(f"Available {cat_filter} Stays in {state_sel}")
+    
+    # Mock Database
+    properties = [
+        {"name": "Stanza Living - Blue Bell", "price": 8500, "rating": 4.8, "services": "WiFi, Gym, Meals", "city": "Bangalore"},
+        {"name": "Zolo Scholars", "price": 4500, "rating": 4.2, "services": "Laundry, CCTV, WiFi", "city": "Delhi"},
+        {"name": "Heritage Villa", "price": 12000, "rating": 4.9, "services": "Pool, Kitchen, Garden", "city": "Jaipur"}
+    ]
+    
+    for p in properties:
+        if p['price'] <= price_limit:
+            with st.container():
+                st.markdown(f"""
+                <div class="property-card">
+                    <div style="display: flex; justify-content: space-between;">
+                        <h4 style="margin:0;">{p['name']}</h4>
+                        <span class="rating-badge">★ {p['rating']} (120 reviews)</span>
+                    </div>
+                    <p style="color:#666; font-size: 0.9em;">📍 {p['city']} • {cat_filter} Friendly</p>
+                    <p style="margin: 5px 0;"><b>Services:</b> {p['services']}</p>
+                    <h3 style="color:#6366F1;">₹{p['price']}<small>/mo</small></h3>
+                </div>
+                """, unsafe_allow_html=True)
+                if st.button(f"Reserve Now - {p['name']}", key=p['name']):
+                    st.success("Booking Request Sent to Provider!")
 
+    if st.button("Log Out", type="secondary"):
+        st.session_state.auth_stage = 'register'
+        st.rerun()
+        
