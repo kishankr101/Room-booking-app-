@@ -4,17 +4,12 @@ from datetime import datetime
 import folium
 from streamlit_folium import st_folium
 
-# --- 1. PAGE CONFIG ---
 st.set_page_config(page_title="StayEase India", layout="wide")
 
-# --- UI ---
+# --- STYLE ---
 st.markdown("""
 <style>
-.prop-card {
-    background: white; padding: 20px; border-radius: 16px;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-    margin-bottom: 15px;
-}
+.prop-card {background:white;padding:20px;border-radius:12px;margin-bottom:10px;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -22,16 +17,16 @@ st.markdown("""
 @st.cache_data
 def load_data():
     data = []
-    cities = ["Delhi","Mumbai","Bangalore","Hyderabad","Chennai"]
+    cities = ["Delhi","Mumbai","Bangalore","Chennai"]
     types = ["Student","Traveler","Family"]
 
-    for i in range(1, 51):
+    for i in range(1, 31):
         data.append({
             "id": i,
-            "name": f"Property {i}",
+            "name": f"Stay #{i}",
             "city": cities[i % len(cities)],
             "type": types[i % 3],
-            "price": 3000 + i*100,
+            "price": 3000 + i * 200,
             "lat": 20.5 + i*0.1,
             "lon": 78.9 + i*0.1
         })
@@ -40,98 +35,127 @@ def load_data():
 df = load_data()
 
 # --- SESSION ---
-if 'auth_stage' not in st.session_state:
-    st.session_state.auth_stage = 'register'
+if "page" not in st.session_state:
+    st.session_state.page = "register"
+
+if "users" not in st.session_state:
+    st.session_state.users = {}
 
 # ---------------- REGISTER ----------------
-if st.session_state.auth_stage == 'register':
-
+if st.session_state.page == "register":
     st.title("Register")
 
-    name = st.text_input("Name")
     email = st.text_input("Email")
-    phone = st.text_input("Phone")
     password = st.text_input("Password", type="password")
+    role = st.selectbox("Role", ["Student","Traveler","Family","Service Provider"])
 
-    role = st.selectbox("Role", 
-        ["Student", "Traveler", "Family (Renter)", "Service Provider"])
-
-    if st.button("Complete Registration"):
-
-        if not name or not email or not phone or not password:
-            st.error("⚠️ Fill all fields")
+    if st.button("Register"):
+        if not email or not password:
+            st.error("Fill all fields")
         else:
-            # store credentials
-            st.session_state.reg_email = email
-            st.session_state.reg_password = password
-            st.session_state.user_role = role
-            st.session_state.user_cat = role if role != "Service Provider" else "Traveler"
-
-            st.session_state.auth_stage = 'login'
-            st.success("Registration successful! Please login.")
+            st.session_state.users[email] = {
+                "password": password,
+                "role": role,
+                "name": "",
+                "phone": "",
+                "properties": []
+            }
+            st.success("Registered Successfully")
+            st.session_state.page = "login"
             st.rerun()
 
 # ---------------- LOGIN ----------------
-elif st.session_state.auth_stage == 'login':
-
+elif st.session_state.page == "login":
     st.title("Login")
 
-    login_email = st.text_input("Enter Email")
-    login_password = st.text_input("Enter Password", type="password")
+    email = st.text_input("Email")
+    password = st.text_input("Password", type="password")
 
     if st.button("Login"):
-
-        if not login_email or not login_password:
-            st.error("⚠️ Fill all fields")
-        elif (login_email == st.session_state.get("reg_email") and 
-              login_password == st.session_state.get("reg_password")):
-
-            st.session_state.auth_stage = 'main'
-            st.success("Login successful!")
+        if email in st.session_state.users and st.session_state.users[email]["password"] == password:
+            st.session_state.current_user = email
+            st.session_state.page = "main"
             st.rerun()
         else:
-            st.error("❌ Invalid credentials")
+            st.error("Invalid login")
 
 # ---------------- MAIN ----------------
-elif st.session_state.auth_stage == 'main':
+elif st.session_state.page == "main":
 
-    if st.session_state.user_role == "Service Provider":
+    user = st.session_state.users[st.session_state.current_user]
 
-        st.title("Provider Panel")
+    # --- SIDEBAR ---
+    menu = st.sidebar.radio("Menu", ["Home","Profile","Logout"])
 
-        p_name = st.text_input("Property Name")
-        p_city = st.selectbox("City", df['city'].unique())
+    # -------- HOME --------
+    if menu == "Home":
+        st.title("Home")
 
-        if st.button("Add Property"):
-            if not p_name:
-                st.error("Enter property name")
-            else:
-                st.success("Property added!")
-
-    else:
-        st.title("Find Stay")
-
-        city = st.selectbox("City", df['city'].unique())
+        city = st.selectbox("City", df["city"].unique())
         budget = st.slider("Budget", 2000, 20000, 10000)
         category = st.selectbox("Category", ["Student","Traveler","Family"])
 
-        filtered = df[(df.city==city)&(df.price<=budget)&(df.type==category)]
+        filtered = df[(df["city"]==city) & (df["price"]<=budget) & (df["type"]==category)]
 
-        for _, row in filtered.iterrows():
-            st.markdown(f"""
-            <div class="prop-card">
-            <h3>{row['name']}</h3>
-            <p>{row['city']} - ₹{row['price']}</p>
-            </div>
-            """, unsafe_allow_html=True)
+        tab1, tab2 = st.tabs(["Map","List"])
 
-            if st.button(f"Book {row['id']}"):
-                st.success("Booked!")
+        with tab1:
+            if not filtered.empty:
+                m = folium.Map(location=[filtered.iloc[0]["lat"], filtered.iloc[0]["lon"]])
+                for _, r in filtered.iterrows():
+                    folium.Marker([r["lat"], r["lon"]], popup=r["name"]).add_to(m)
+                st_folium(m, width=700)
 
-    # --- NIGHT SAFETY ---
-    if 20 <= datetime.now().hour or datetime.now().hour <= 5:
-        st.sidebar.error("Night Safety Active")
+        with tab2:
+            for _, r in filtered.iterrows():
+                st.markdown(f"<div class='prop-card'>{r['name']} - ₹{r['price']}</div>", unsafe_allow_html=True)
+                if st.button("Book", key=r["id"]):
+                    st.success("Request Sent")
 
-    if st.sidebar.button("Logout"):
-        st.session_state.auth_stage = 'register'
+    # -------- PROFILE --------
+    elif menu == "Profile":
+        st.title("Profile")
+
+        name = st.text_input("Name", value=user["name"])
+        phone = st.text_input("Phone", value=user["phone"])
+
+        if st.button("Save Profile"):
+            user["name"] = name
+            user["phone"] = phone
+            st.success("Saved")
+
+        # --- SERVICE PROVIDER EXTRA ---
+        if user["role"] == "Service Provider":
+            st.subheader("Add Property")
+
+            p_name = st.text_input("Property Name")
+            p_city = st.selectbox("City", df["city"].unique())
+            p_type = st.selectbox("For", ["Student","Traveler","Family"])
+            p_rooms = st.selectbox("Rooms", ["Available","Full"])
+            p_security = st.multiselect("Security", ["CCTV","Guard","Fire Safety"])
+            p_price = st.number_input("Price", min_value=1000)
+
+            if st.button("Add Property"):
+                user["properties"].append({
+                    "name": p_name,
+                    "city": p_city,
+                    "type": p_type,
+                    "rooms": p_rooms,
+                    "security": p_security,
+                    "price": p_price
+                })
+                st.success("Added")
+
+            st.subheader("Your Properties")
+            for p in user["properties"]:
+                st.write(p)
+
+    # -------- LOGOUT --------
+    elif menu == "Logout":
+        st.session_state.page = "login"
         st.rerun()
+
+# --- NIGHT SAFETY ---
+curr_h = datetime.now().hour
+if 20 <= curr_h or curr_h <= 5:
+    st.sidebar.warning("Night Safety Active")
